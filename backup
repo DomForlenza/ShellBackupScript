@@ -1,0 +1,129 @@
+#! /bin/bash
+# Created by Dominick Forlenza
+
+# Get command line arguments
+action=$1
+directory=$2
+backup_directory=$3
+
+# First argument wrong error
+if [[ $action != "-s" ]]
+then
+   if [[ $action != "-r" ]]
+   then
+        >&2 echo "Error: $action is not a valid command."
+   	echo "Usage: $0 <-s or -r> <user account directory> <backup directory>"
+   	exit 
+   fi
+fi
+
+# Wrong number of arguments error
+if [[ $# -ne 3 ]] 
+then
+   >&2 echo "Error: Number of arguments is not valid."
+   echo "Usage: $0 <-s or -r> <user account directory> <backup directory>"
+   exit
+fi
+
+# User account directory does not exist
+if [[ ! -d  $directory ]]
+then
+   >&2 echo "Error $0: $directory does not exist. Exiting."
+   exit
+fi
+
+# Backup directory does not exist
+if [[ ! -d  $backup_directory ]]
+then
+   >&2 echo "Error $0: $backup_directory does not exist. Exiting."
+   exit
+fi
+
+# Check if account directory is not readable
+if [[ ! -r $directory ]]
+then
+   >&2 echo "Error $0: $directory is not readable. Please fix permissions. Exiting."
+   exit
+fi
+
+# Check if account directory is not executable
+if [[ ! -x $directory ]]
+then
+   >&2 echo "Error $0: $directory is not executable. Please fix permissions. Exiting."
+   exit
+fi
+
+# Check if backup directory is not readable
+if [[ ! -r $backup_directory ]]
+then
+   >&2 echo "Error $0: $backup_directory is not readable. Please fix permissions. Exiting."
+   exit
+fi
+
+# Check if backup directory is not executable
+if [[ ! -x $backup_directory ]]
+then
+   >&2 echo "Error $0: $backup_directory is not executable. Please fix permissions. Exiting."
+   exit
+fi
+
+# Save
+if [[ $action == "-s" ]]
+then
+   echo "User Repository Data" > $backup_directory/repository-data
+   users=($(ls $directory))
+   for i in "${users[@]}"
+   do
+     # Set variables to add to file
+     name=$i
+     home_direc=$directory/$i
+     backup_date=$(date +%s)
+     num_files=$(find $directory/$i -type f | wc -l)
+     num_directories=$(find $directory/$i -type d | wc -l)
+     direc_size=$(du -sb $directory/$i | cut -f1)
+     
+     # tar directory and copy to backup directory
+     tar -cf $name.tgz -C $directory $name
+     cp $name.tgz $backup_directory
+
+     # Output user backup info to repository-data file
+     echo "$name,$home_direc,$backup_date,$num_files,$num_directories,$direc_size" >> $backup_directory/repository-data
+   done
+fi
+
+# Restore
+if [[ $action == "-r" ]] 
+then
+   users=($(ls $directory))
+   for i in "${users[@]}"
+   do
+     # Search repository-data for users
+     found_user=$(grep "$i" $backup_directory/repository-data)
+     if [[ -z "$found_user" ]] 
+     then
+	echo "No backup available for $i"
+	continue
+     else 
+        # Unpack files from temp/scratch
+        tmpPath=/tmp/scratch
+        if [[ ! -d $tmpPath ]]
+        then
+           mkdir -p /tmp/scratch
+        fi
+        tar -C $tmpPath -xf $backup_directory/$i.tgz
+
+        # Compare scratch with user directory
+        filePath=$(diff -rq $tmpPath/$i $directory/$i | cut -d' ' -f3)
+        fixed_path=$(echo $filePath | cut -d: -f1)
+        fileStart=$(diff -rq $tmpPath/$i $directory/$i | cut -d: -f2)
+        files=$(echo $fileStart | tr -d ' ')
+        if [[ ! -z $files ]] 
+        then 
+           cp $fixed_path/$files $directory/$i 
+        else 
+           continue
+        fi
+     fi
+   done 
+    rm -rf $tmpPath/*
+fi
