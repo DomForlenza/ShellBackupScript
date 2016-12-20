@@ -1,4 +1,4 @@
-# Shell Backup Script
+# Linux Shell Backup Script
 # Created by Dominick Forlenza
 
 Backup directories and replace lost or missing files.
